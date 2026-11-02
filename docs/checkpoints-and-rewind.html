@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkpoints &amp; Rewind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sticky table of contents on the left, one reading column; collapses to a single column on phones. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --fg: #1b1f27; --muted: #5b6474; --line: #dde1e8;
+  --accent: #c2410c; --accent-soft: #fdeee6; --code-bg: #eef1f5;
+  --note: #2563eb; --tip: #15803d; --imp: #7c3aed; --warn: #b45309;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151b; --surface: #1a1e26; --fg: #e6e9ef; --muted: #98a1b2; --line: #2b313d;
+  --accent: #fb8a4c; --accent-soft: #3a2418; --code-bg: #222834;
+  --note: #6ea0ff; --tip: #4ade80; --imp: #b794ff; --warn: #f5b454; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151b; --surface: #1a1e26; --fg: #e6e9ef; --muted: #98a1b2; --line: #2b313d;
+  --accent: #fb8a4c; --accent-soft: #3a2418; --code-bg: #222834;
+  --note: #6ea0ff; --tip: #4ade80; --imp: #b794ff; --warn: #f5b454; color-scheme: dark }
+
+* { box-sizing: border-box }
+html { scroll-behavior: smooth; scroll-padding-top: 24px }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto } }
+body { background: var(--bg); color: var(--fg); font: 16px/1.65 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 56px; padding-block: 48px 96px }
+nav.toc { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; font-size: 14px }
+.toc .label { font: 600 11px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px }
+.toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.toc ul ul { padding-left: 14px; margin-block: 2px 6px }
+.toc a { display: block; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--muted); text-decoration: none }
+.toc a:hover { color: var(--fg) }
+.toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600 }
+main { min-width: 0; max-width: 760px }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 64px } nav.toc { display: none } }
+
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0 }
+h1 { font-size: clamp(36px, 6vw, 56px); font-weight: 750; letter-spacing: -.02em }
+h2 { font-size: 30px; font-weight: 750; margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line) }
+h3 { font-size: 20px; font-weight: 600; margin-top: 36px }
+h2 + *, h3 + * { margin-top: 14px }
+p, ul, ol { margin-block: 12px }
+a { color: var(--accent) }
+a:focus-visible, button:focus-visible, input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px }
+code { font: .86em var(--mono); background: var(--code-bg); padding: .12em .38em; border-radius: 4px; overflow-wrap: anywhere }
+strong { font-weight: 600 }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .08em; color: var(--accent); text-transform: uppercase }
+.lede { font-size: 20px; line-height: 1.5; color: var(--muted); margin-top: 18px; max-width: 60ch }
+.lede strong { color: var(--fg) }
+.meta { font-size: 14px; color: var(--muted); margin-top: 18px }
+
+.table { overflow-x: auto; margin-block: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line) }
+th { font: 600 11px/1.4 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--code-bg) }
+tr:last-child td { border-bottom: 0 }
+td:first-child { white-space: nowrap }
+td.wrap-ok { white-space: normal }
+
+.callout { border-left: 3px solid var(--c); background: var(--surface); padding: 12px 16px; border-radius: 0 8px 8px 0; margin-block: 18px; font-size: 15px }
+.callout .t { font: 600 12px/1 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--c); margin-bottom: 6px }
+.callout p, .callout ul { margin: 0 } .callout ul { padding-left: 20px; margin-top: 4px }
+.note { --c: var(--note) } .tip { --c: var(--tip) } .imp { --c: var(--imp) } .warn { --c: var(--warn) }
+
+/* architecture diagram */
+.arch { display: grid; gap: 10px; justify-items: center; margin-block: 20px; padding: 24px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px }
+.node { width: min(100%, 360px); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; background: var(--bg) }
+.node b { font: 600 14px var(--mono); display: block }
+.node span { font-size: 13px; color: var(--muted) }
+.node.pure { border-color: var(--accent); background: var(--accent-soft) }
+.node.io { border-style: dashed }
+.arrow { color: var(--muted); font: 13px var(--mono); line-height: 1 }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: min(100%, 560px) }
+.pair .node { width: 100% }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--muted); justify-content: center }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; border: 1px solid var(--line) }
+.legend .lp i { background: var(--accent-soft); border-color: var(--accent) }
+.legend .li i { border-style: dashed }
+@media (max-width: 480px) { .pair { grid-template-columns: 1fr } }
+
+/* steps */
+ol.steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 12px }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px }
+ol.steps > li::before { content: counter(s); font: 600 14px/32px var(--mono); text-align: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); height: 32px }
+
+/* rewind demo */
+.demo { margin-block: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden }
+.demo header { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between }
+.demo header b { font-family: var(--display); font-size: 17px }
+.demo header small { color: var(--muted); font-size: 13px }
+.demo .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 640px) { .demo .body { grid-template-columns: minmax(0, 1fr) } }
+.log { padding: 14px 18px; border-right: 1px solid var(--line); display: grid; gap: 6px; align-content: start }
+@media (max-width: 640px) { .log { border-right: 0; border-bottom: 1px solid var(--line) } }
+.ev { font: 12.5px/1.45 var(--mono); padding: 6px 10px; border-radius: 6px; color: var(--muted) }
+.ev.msg { font-family: var(--body); font-size: 14px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); cursor: pointer; text-align: left; width: 100% }
+.ev.msg:hover { border-color: var(--accent) }
+.ev.msg.sel { border-color: var(--accent); background: var(--accent-soft) }
+.ev.msg em { font-style: normal; font: 11px var(--mono); color: var(--muted); display: block }
+.ev.dropped { text-decoration: line-through; opacity: .5 }
+.ev.manual { color: var(--warn) }
+.plan { padding: 14px 18px; display: grid; gap: 10px; align-content: start }
+.plan h4 { margin: 0; font: 600 11px/1 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted) }
+.file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font: 13px var(--mono); padding: 6px 0; border-bottom: 1px dashed var(--line) }
+.file:last-child { border-bottom: 0 }
+.pill { font: 600 11px/1 var(--body); padding: 4px 8px; border-radius: 99px; background: var(--code-bg); color: var(--muted); white-space: nowrap }
+.pill.del { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn) }
+.pill.rest { background: var(--accent-soft); color: var(--accent) }
+.pill.keep { background: color-mix(in srgb, var(--tip) 16%, transparent); color: var(--tip) }
+.opts { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13.5px }
+.opts label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer }
+.result { font-size: 13.5px; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 10px 12px }
+.result strong { color: var(--fg) }
+</style>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <div class="label">Contents</div>
+    <ul>
+      <li><a href="#at-a-glance">At a glance</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#checkpoints">Checkpoints</a>
+        <ul>
+          <li><a href="#filestate">Snapshots: FileState</a></li>
+          <li><a href="#event-log">The event log</a></li>
+          <li><a href="#lifecycle">Turn lifecycle</a></li>
+          <li><a href="#manual-edits">Manual edits</a></li>
+          <li><a href="#hunks">Hunks and decisions</a></li>
+          <li><a href="#restore-plans">Restore plans</a></li>
+        </ul>
+      </li>
+      <li><a href="#rewind">Rewind</a>
+        <ul>
+          <li><a href="#how-rewind-runs">How a rewind runs</a></li>
+          <li><a href="#message-resets">Message resets</a></li>
+        </ul>
+      </li>
+      <li><a href="#resume">Snapshots and resume</a>
+        <ul><li><a href="#unified-backend">App-server backend</a></li></ul>
+      </li>
+      <li><a href="#tests">Tests</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="eyebrow">Mistral Vibe · core guide</div>
+    <h1>Checkpoints &amp; Rewind</h1>
+    <p class="lede"><strong>Undo for agents.</strong> Vibe snapshots every file an agent turn touches, so you can roll back both the conversation <em>and</em> your working tree to any earlier message, without ever losing the original session.</p>
+    <p class="meta">Covers <code>vibe/core/checkpoints/</code> (how snapshots are taken and stored) and <code>vibe/core/rewind/</code> (how they undo work), plus behaviour across session resume.<br>Related ADRs: <code>0006 Local Sessions</code> (rewind persistence modes) · <code>0003 Event Driven Agent Loop</code></p>
+
+    <h2 id="at-a-glance">At a glance</h2>
+    <p><strong>Using it.</strong> Type <code>/rewind</code>, or press <code>Esc</code> twice on an empty input, then pick the user message to return to. You choose whether to restore files as well as the conversation; the rewound message is placed back in the input box, ready to edit and resend.</p>
+
+    <section class="demo" aria-label="Interactive rewind example">
+      <header><b>Try it: pick a message to rewind to</b><small>Example session · 3 turns, 1 hand edit</small></header>
+      <div class="body">
+        <div class="log" id="log"></div>
+        <div class="plan">
+          <h4>Restore plan</h4>
+          <div id="plan"></div>
+          <div class="opts">
+            <label><input type="checkbox" id="opt-files" checked> Restore files</label>
+            <label><input type="checkbox" id="opt-inplace"> In place</label>
+          </div>
+          <div class="result" id="result"></div>
+        </div>
+      </div>
+    </section>
+
+    <p><strong>What you can rely on:</strong></p>
+    <div class="table"><table>
+      <tr><th>Guarantee</th><th>How</th></tr>
+      <tr><td><strong>Nothing is lost by default</strong></td><td>Rewinds fork a new session; the original is saved untouched.</td></tr>
+      <tr><td><strong>Files and conversation are independent</strong></td><td>Restore the conversation alone, or both together.</td></tr>
+      <tr><td><strong>Your own edits are respected</strong></td><td>Hand edits made between turns are detected and tracked as <code>ManualEdit</code>s.</td></tr>
+      <tr><td><strong>Deletions are never invented</strong></td><td>A read error is never mistaken for a missing file.</td></tr>
+      <tr><td><strong>Shell side effects are captured</strong></td><td>Files touched by snapshot-less tools are re-read at turn boundaries.</td></tr>
+      <tr><td><strong>Single source of truth</strong></td><td>All state is derived from one append-only event log; nothing is cached on the side.</td></tr>
+    </table></div>
+
+    <h2 id="architecture">Architecture</h2>
+    <p>Vibe follows a <strong>pure core, impure shells</strong> design. A single <code>Checkpointer</code> instance is shared by the recorder, the rewind manager and the review manager (wired in <code>AgentLoop.__init__</code>, <code>vibe/core/agent_loop/_loop.py</code>). Only <code>FileStore</code> ever touches the disk.</p>
+    <div class="arch" role="img" aria-label="Agent loop feeds CheckpointRecorder, which writes to Checkpointer; History reads Checkpointer; RewindManager and ReviewManager use History and write through FileStore to the filesystem.">
+      <div class="arrow">agent loop ↓</div>
+      <div class="node"><b>CheckpointRecorder</b><span>recorder.py · turn lifecycle, reads disk at boundaries</span></div>
+      <div class="arrow">↓</div>
+      <div class="node pure"><b>Checkpointer</b><span>checkpointer.py · in-memory, append-only event log</span></div>
+      <div class="arrow">↓ view()</div>
+      <div class="node pure"><b>History</b><span>history.py · projections, hunks, restore plans</span></div>
+      <div class="arrow">↙ ↘</div>
+      <div class="pair">
+        <div class="node"><b>RewindManager</b><span>rewind/manager.py · undo to a user message</span></div>
+        <div class="node"><b>ReviewManager</b><span>review/manager.py · per-hunk keep / revert</span></div>
+      </div>
+      <div class="arrow">↘ ↙</div>
+      <div class="node io"><b>FileStore → Filesystem</b><span>file_store.py, fs.py · the only disk I/O</span></div>
+      <div class="legend"><span class="lp"><i></i>pure</span><span><i></i>impure shell</span><span class="li"><i></i>disk I/O</span></div>
+    </div>
+
+    <h2 id="checkpoints">Checkpoints — <code>vibe/core/checkpoints/</code></h2>
+    <div class="table"><table>
+      <tr><th>File</th><th>Responsibility</th></tr>
+      <tr><td><code>models.py</code></td><td>Public value types: <code>FileState</code>, <code>Region</code>, <code>OpaqueChange</code>, <code>RegionId</code>, owners (<code>AgentTurn</code>, <code>ManualEdit</code>), <code>Decision</code>, <code>TurnRegion</code>, <code>HunkAnchor</code>, errors.</td></tr>
+      <tr><td><code>_events.py</code></td><td>Private log events: <code>_TurnMark</code>, <code>_Edit</code>, <code>_Decide</code>.</td></tr>
+      <tr><td><code>checkpointer.py</code></td><td><code>Checkpointer</code>: the append-only log and every mutation (turns, edits, decisions, truncation, fork).</td></tr>
+      <tr><td><code>history.py</code></td><td><code>History</code>: pure read model computed from a list of events.</td></tr>
+      <tr><td><code>recorder.py</code></td><td><code>CheckpointRecorder</code> + <code>FileSnapshot</code>: drives the per-turn snapshot lifecycle from the agent loop.</td></tr>
+      <tr><td><code>file_store.py</code></td><td><code>FileStore</code>: reads <code>FileState</code>s and applies restore plans to disk.</td></tr>
+      <tr><td><code>fs.py</code></td><td><code>Filesystem</code> port + <code>DiskFilesystem</code> adapter (fakeable in tests).</td></tr>
+    </table></div>
+
+    <h3 id="filestate">Snapshots: <code>FileState</code></h3>
+    <p>A snapshot is a whole-file byte copy, <code>FileState(data: bytes | None)</code>:</p>
+    <ul>
+      <li><strong><code>data is None</code></strong>: the file did not exist; restoring it means <strong>deleting</strong> it.</li>
+      <li><strong><code>b"\x00" in data</code></strong>: treated as binary. Not line-diffed, but handled as a single <code>OpaqueChange</code>.</li>
+    </ul>
+    <div class="callout note"><div class="t">Note</div><p><code>DiskFilesystem.read_bytes</code> returns <code>None</code> <strong>only</strong> for a missing file and raises for an unreadable one, so a transient read error is never mistaken for a deletion.</p></div>
+
+    <h3 id="event-log">The event log</h3>
+    <p><code>Checkpointer</code> keeps one ordered list of events, each stamped with a monotonic <code>seq</code>:</p>
+    <div class="table"><table>
+      <tr><th>Event</th><th>Meaning</th></tr>
+      <tr><td><code>_TurnMark(seq, turn_id, pre)</code></td><td>Start of an agent turn. <code>turn_id</code> is the index of the user message in the conversation; <code>pre</code> maps each file the turn touched to its state <strong>before</strong> the turn's first edit.</td></tr>
+      <tr><td><code>_Edit(seq, owner, path, before, after, deps)</code></td><td>One file's <code>before → after</code> change, owned by an <code>AgentTurn</code> or a <code>ManualEdit</code>. <code>deps</code> records, per hunk, the earlier hunks it was built on.</td></tr>
+      <tr><td><code>_Decide(seq, path, hunk, keep)</code></td><td>A review decision (keep / revert) on one hunk.</td></tr>
+    </table></div>
+    <p>Everything else (current content, the approved baseline, hunks, restore plans) is <strong>derived</strong> by <code>History</code> from this log.</p>
+
+    <h3 id="lifecycle">Turn lifecycle</h3>
+    <p><code>AgentLoop</code> drives three hooks around every user turn:</p>
+    <div class="table"><table>
+      <tr><th>Phase</th><th>Hook</th><th>What happens</th></tr>
+      <tr><td><strong>1. Turn start</strong></td><td><code>create_checkpoint()</code></td><td class="wrap-ok"><code>begin_turn(len(messages))</code> appends a <code>_TurnMark</code>. Every file touched in the previous turn is re-read from disk as a pre-edit state, so files mutated by snapshot-less tools (e.g. a shell command) are still captured.</td></tr>
+      <tr><td><strong>2. Before each tool call</strong></td><td><code>add_snapshot(snapshot)</code></td><td class="wrap-ok">File-writing tools (<code>write_file</code>, <code>edit</code>; see <code>BaseTool.get_file_snapshot</code>) return a <code>FileSnapshot(path, state)</code> taken <em>before</em> they run. <code>record_pre_edit</code> keeps only the <strong>first</strong> snapshot per path in a turn.</td></tr>
+      <tr><td><strong>3. Turn end</strong> (<code>finally</code>)</td><td><code>seal_turn()</code></td><td class="wrap-ok">Every touched path is re-read as its post-edit state; each <code>pre != post</code> pair becomes an <code>_Edit</code> owned by <code>AgentTurn(turn_id)</code>. Unchanged files emit nothing. A file that fails to read is logged and skipped without blocking the others.</td></tr>
+    </table></div>
+
+    <h3 id="manual-edits">Manual edits</h3>
+    <p>Changes you make by hand between turns are detected by comparing live disk with the log's projection:</p>
+    <ul>
+      <li><strong><code>record_pre_edit</code></strong>: if a tracked file has drifted when a new turn first touches it, the drift is inserted as a <code>ManualEdit</code> <strong>just before</strong> that turn's mark (it happened before the turn).</li>
+      <li><strong><code>reconcile(path, current)</code></strong>: called by <code>ReviewManager</code> at each acting boundary; drift is appended as a <code>ManualEdit</code>. Idempotent, and skipped while a turn is open.</li>
+    </ul>
+
+    <h3 id="hunks">Hunks and review decisions</h3>
+    <p><code>History</code> splits each <code>_Edit</code> into line hunks (<code>Region</code>, via <code>difflib</code>) or a single <code>OpaqueChange</code>. A hunk's identity, <code>RegionId(version_index=edit.seq, ordinal)</code>, stays stable as the log grows. Decisions are made per hunk:</p>
+    <ul>
+      <li><strong>Keep</strong> pulls in the pending hunks it depends on.</li>
+      <li><strong>Revert</strong> drags its dependents along (computed at read time).</li>
+      <li><strong>No un-revert</strong>: a reverted change comes back only by truncating the log or through a new edit.</li>
+    </ul>
+    <p><code>Checkpointer.atomic()</code> rolls the log back if the disk write following a decision fails. Decisions are refused while a turn is open.</p>
+
+    <h3 id="restore-plans">Restore plans</h3>
+    <p><code>History.restore_plan(index)</code> answers one question: <em>what should each file look like if the log were cut at event <code>index</code>?</em></p>
+    <ul>
+      <li>A file touched by a dropped <strong>turn</strong> restores to the <code>pre</code> of the earliest dropped turn that touched it: its state when that turn began.</li>
+      <li>A file touched only by a dropped <strong>manual edit</strong> restores to its projection of the kept prefix.</li>
+      <li><code>FileState(None)</code> means <em>delete the file</em>.</li>
+    </ul>
+    <p><code>restore_plan_to_turn(turn_id)</code> resolves the turn's mark (newest exact match, else the next later turn) and delegates to <code>restore_plan</code>. <code>FileStore.apply(plan)</code> writes the result, skips files already in the target state, and returns <code>(errors, restored_paths)</code>.</p>
+
+    <h2 id="rewind">Rewind — <code>vibe/core/rewind/</code></h2>
+    <p><code>RewindManager</code> (<code>manager.py</code>) is the impure shell that winds the conversation, and optionally the files, back to an earlier user message.</p>
+    <div class="table"><table>
+      <tr><th>Method</th><th>Purpose</th></tr>
+      <tr><td><code>get_rewindable_messages()</code></td><td><code>(index, content)</code> for every non-injected user message.</td></tr>
+      <tr><td><code>index_for_message_id(id)</code></td><td>Resolves a message id to its index, or raises <code>RewindError</code>.</td></tr>
+      <tr><td class="wrap-ok"><code>restorable_paths_at(index)</code> / <code>has_file_changes_at(index)</code></td><td>Files whose disk content would actually change when rewinding to that turn (plan target ≠ current disk). Clients use this to decide whether to offer "restore files".</td></tr>
+      <tr><td class="wrap-ok"><code>rewind_to_message(index, *, restore_files, inplace=False)</code></td><td>Performs the rewind; returns <code>(message_content, restore_errors, restored_paths)</code>.</td></tr>
+    </table></div>
+
+    <h3 id="how-rewind-runs">How a rewind runs</h3>
+    <ol class="steps">
+      <li><div><strong>Validate.</strong> <code>index</code> must point at a user message.</div></li>
+      <li><div><strong>Restore files</strong> (if <code>restore_files</code>). Apply <code>restore_plan_to_turn(index)</code>. The turn started at that message and every later turn are undone, along with manual edits recorded after it.</div></li>
+      <li><div><strong>Truncate</strong> the conversation to <code>messages[:index]</code> and the log via <code>drop_turns_from(index)</code>. The rewound message content is returned so the client can put it back in the input box.</div></li>
+      <li><div><strong>Persist</strong> according to the selected mode (ADR 0006):</div></li>
+    </ol>
+    <div class="table"><table>
+      <tr><th>Mode</th><th>Behaviour</th><th>Original history</th></tr>
+      <tr><td><strong>Fork</strong><br><small>default, <code>inplace=False</code></small></td><td class="wrap-ok">Save the full history to the current session, truncate, then <code>_reset_session()</code> creates a new session whose parent is the original.</td><td><span class="pill keep">Preserved</span></td></tr>
+      <tr><td><strong>In place</strong><br><small><code>inplace=True</code></small></td><td class="wrap-ok">Truncate, then save under the same session (<code>allow_empty=True</code>, so rewinding to the first message saves an empty conversation).</td><td><span class="pill del">Discarded for good</span></td></tr>
+    </table></div>
+    <div class="callout tip"><div class="t">Tip</div><p>File restoration and conversation persistence are independent: rewinding with <code>restore_files=False</code> leaves the disk exactly as it is.</p></div>
+
+    <h3 id="message-resets">Message resets</h3>
+    <p><code>RewindManager</code> subscribes to <code>MessageList.on_reset</code>. Any reset other than the rewind's own truncation (session switch, <code>/clear</code>, …) clears the checkpoint log. If a turn was open, a fresh one begins so the rest of the tool loop keeps recording snapshots.</p>
+
+    <h2 id="resume">Snapshots and resume</h2>
+    <div class="callout imp"><div class="t">Important</div><p>The checkpoint log lives <strong>only in memory</strong>; it is never written to the session log. Conversation rewinds are always durable; <strong>file</strong> restores are only available for turns recorded in the current process.</p></div>
+    <ul>
+      <li><strong>Resuming a session</strong> (<code>--resume</code> / <code>--continue</code>, session picker) calls <code>checkpoint_recorder.reset()</code> (<code>_reset_session_scoped_state</code>) and starts from an empty log. Rewinding to a message from before the resume truncates the conversation but restores <strong>no files</strong>: <code>restorable_paths_at</code> returns <code>[]</code> and the client does not offer a file restore.</li>
+      <li><strong>Turns run after the resume</strong> are recorded normally and can be rewound with files restored.</li>
+      <li><strong>Forked rewinds</strong> keep working within a process. On the app-server unified backend (<code>vibe/app_server/_unified_harness_snapshots.py</code>), <code>RewindFileSnapshots.forked()</code> copies the log with <code>Checkpointer.prefix_before(turn)</code>, which re-bases <code>seq</code> and keeps the manual-edit counter so inherited region ids never collide.</li>
+    </ul>
+
+    <h3 id="unified-backend">App-server unified backend</h3>
+    <p><code>RewindFileSnapshots</code> reuses <code>Checkpointer</code> but records disk states at the turn boundaries the adapter observes, since the harness runtime writes files itself.</p>
+    <div class="callout warn"><div class="t">Known gaps on this backend</div><ul>
+      <li>A file first touched by <code>edit</code> or a shell command has no pre-state.</li>
+      <li>Subagent writes are not recorded.</li>
+      <li>Sandboxed sessions use <code>UnavailableRewindFileSnapshots</code> and restore nothing.</li>
+    </ul></div>
+
+    <h2 id="tests">Tests</h2>
+    <div class="table"><table>
+      <tr><th>Location</th><th>Covers</th></tr>
+      <tr><td><code>tests/core/rewind/</code></td><td>Rewind manager behaviour.</td></tr>
+      <tr><td class="wrap-ok"><code>client-e2e/scenarios/rewind/</code> + <code>client-e2e/goldens/rewind/</code></td><td>End-to-end rewind scenarios for the Rust TUI.</td></tr>
+      <tr><td><code>vibe/cli-rust/src/rewind/</code></td><td>Rust TUI rewind UI (a thin client over the app-server).</td></tr>
+    </table></div>
+  </main>
+</div>
+
+<script>
+// Example event log. Rewinding to msg i drops turn i onward plus later manual edits;
+// each file restores to the `before` of its earliest dropped edit (mirrors History.restore_plan).
+const LOG = [
+  { msg: 0, text: "Add a config loader" },
+  { owner: "turn 0", path: "config.py", before: null, after: "v1" },
+  { owner: "turn 0", path: "main.py", before: "v1", after: "v2" },
+  { msg: 1, text: "Write tests for it" },
+  { owner: "turn 1", path: "test_config.py", before: null, after: "v1" },
+  { owner: "manual", path: "main.py", before: "v2", after: "v3" },
+  { msg: 2, text: "Refactor main to use it" },
+  { owner: "turn 2", path: "main.py", before: "v3", after: "v4" },
+  { owner: "turn 2", path: "config.py", before: "v1", after: "v2" },
+];
+const disk = {};
+LOG.forEach(e => { if (e.path) disk[e.path] = e.after });
+
+let sel = 1;
+const $ = id => document.getElementById(id);
+const show = s => s === null ? "missing" : s;
+
+function render() {
+  const cut = LOG.findIndex(e => e.msg === sel);
+  const restore = $("opt-files").checked, inplace = $("opt-inplace").checked;
+  $("log").innerHTML = LOG.map((e, i) => e.text !== undefined
+    ? `<button class="ev msg${e.msg === sel ? " sel" : ""}${i > cut ? " dropped" : ""}" data-msg="${e.msg}"><em>user message ${e.msg}</em>${e.text}</button>`
+    : `<div class="ev${e.owner === "manual" ? " manual" : ""}${i > cut ? " dropped" : ""}">${e.owner === "manual" ? "ManualEdit" : "AgentTurn(" + e.owner.slice(5) + ")"} · ${e.path}: ${show(e.before)} → ${e.after}</div>`).join("");
+
+  const plan = {};
+  LOG.slice(cut).forEach(e => { if (e.path && !(e.path in plan)) plan[e.path] = e.before });
+  $("plan").innerHTML = Object.keys(disk).map(p => {
+    const changes = p in plan && plan[p] !== disk[p];
+    const pill = !restore || !changes ? `<span class="pill">keep ${disk[p]}</span>`
+      : plan[p] === null ? `<span class="pill del">delete</span>` : `<span class="pill rest">${disk[p]} → ${plan[p]}</span>`;
+    return `<div class="file"><span>${p}</span>${pill}</div>`;
+  }).join("");
+
+  const n = Object.keys(plan).filter(p => plan[p] !== disk[p]).length;
+  $("result").innerHTML = `Conversation truncated to messages[:${sel}]. ` +
+    (restore ? `<strong>${n} file${n === 1 ? "" : "s"}</strong> restored. ` : "Disk left as is. ") +
+    (inplace ? "Saved in place: the original history is <strong>gone</strong>." : "Forked: the original session is <strong>kept</strong> as the parent.") +
+    ` “${LOG[cut].text}” goes back in the input box.`;
+}
+$("log").addEventListener("click", e => { const b = e.target.closest("[data-msg]"); if (b) { sel = +b.dataset.msg; render() } });
+$("opt-files").addEventListener("change", render);
+$("opt-inplace").addEventListener("change", render);
+render();
+
+// Scrollspy for the table of contents.
+const links = [...document.querySelectorAll(".toc a")];
+const byId = Object.fromEntries(links.map(a => [a.hash.slice(1), a]));
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(en => { if (en.isIntersecting) { links.forEach(a => a.classList.remove("active")); byId[en.target.id]?.classList.add("active") } });
+}, { rootMargin: "0px 0px -75% 0px" });
+document.querySelectorAll("main h2[id], main h3[id]").forEach(el => spy.observe(el));
+</script>
