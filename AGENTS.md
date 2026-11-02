@@ -2,6 +2,12 @@
 
 Conventions for AI agents and humans contributing to **Mistral Vibe** — a Python 3.12+ CLI coding assistant managed with `uv`.
 
+## Educational fork
+
+This repository is an educational version of Mistral Vibe, maintained at `rrobbes/mistral-vibe`. Agents working here should focus on this educational fork and avoid consulting the upstream `mistralai/mistral-vibe` repository except when strictly necessary. In particular, pull requests must be opened against the educational repo (`rrobbes/mistral-vibe`) only. Do not open pull requests against the upstream repo (`mistralai/mistral-vibe`) unless explicitly authorized by the educational repo owner (`rrobbes`).
+
+## Project layout
+
 Layout: `vibe/core` is the engine (agent loop, tools, LLM backends, config); `vibe/cli` is the legacy Python (Textual) TUI; `vibe/cli-rust` is the Rust (Ratatui) TUI that will replace it, a thin client over `vibe-app-server`; `vibe/acp` bridges to the Agent Client Protocol; `vibe/setup` runs first-run wizards. Tests live in `tests/` with autouse fixtures in `conftest.py` and test doubles in `tests/stubs/`.
 
 ## Architecture Decisions
